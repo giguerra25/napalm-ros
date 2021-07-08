@@ -52,7 +52,22 @@ class ROSDriver(NetworkDriver):
         self.optional_args = optional_args or dict()
         self.port = self.optional_args.get('port', 8728)
         self.api = None
+    
+    #method added to support API-SSL 
+    def certificate_ssl(self): #AQUI
 
+        self.CONTEXT = ssl.create_default_context()  
+        self.CONTEXT.check_hostname = False
+
+        if self.optional_args.get('valid-cert-ssl') == True:
+            #api-ssl working with a certificate
+            self.CONTEXT.verify_mode = ssl.CERT_NONE  # Do not validate a certificate SSL and continue
+        else:
+            #api-ssl working without a certificate
+            self.CONTEXT.set_ciphers('ADH:@SECLEVEL=0') # anonymous Diffie-Hellman cipher
+
+        return self.CONTEXT        
+        
     def close(self):
         self.api.close()
 
@@ -415,14 +430,29 @@ class ROSDriver(NetworkDriver):
         method = self.optional_args.get('login_method', 'plain')
         method = getattr(librouteros.login, method)
         try:
-            self.api = connect(
-                host=self.hostname,
-                username=self.username,
-                password=self.password,
-                port=self.port,
-                timeout=self.timeout,
-                login_method=method,
-            )
+            if 'valid-cert-ssl' in self.optional_args.keys():
+                
+                context = self.certificate_ssl()
+                
+                self.api = connect(
+                    host=self.hostname,
+                    username=self.username,
+                    password=self.password,
+                    port=self.port,
+                    timeout=self.timeout,
+                    login_method=method,
+                    ssl_wrapper=context.wrap_socket,
+                )
+            else:
+                self.api = connect(
+                    host=self.hostname,
+                    username=self.username,
+                    password=self.password,
+                    port=self.port,
+                    timeout=self.timeout,
+                    login_method=method,
+                )   
+                
         except (TrapError, FatalError, socket.timeout, socket.error, MultiTrapError) as exc:
             # pylint: disable=raise-missing-from
             raise ConnectionException("Could not connect to {}:{} - [{!r}]".format(self.hostname, self.port, exc))
